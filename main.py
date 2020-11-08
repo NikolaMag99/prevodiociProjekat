@@ -1,4 +1,15 @@
+
+import os
+
+from IPython.core.display import Image
+from graphviz import Source, Digraph
+
+os.environ["PATH"] += os.pathsep + 'C:\Program Files\Graphviz 2.44.1\lib'
 from enum import Enum, auto
+
+import graphviz
+import pip
+
 
 class Class(Enum):
     PLUS = auto()
@@ -64,7 +75,6 @@ class Class(Enum):
 
     ID = auto()
     EOF = auto()
-
 
 class Token:
     def __init__(self, class_, lexeme):
@@ -287,8 +297,6 @@ class Lexer:
 
     def die(self, char):
         raise SystemExit("Unexpected character: {}".format(char))
-
-
 #---------------------------------------------------------------------------------------------------------------
 
 
@@ -951,7 +959,6 @@ class Parser:
         self.die("Expected: {}, Found: {}".format(expected, found))
 
 #----------------------------------------------------
-
 class Visitor():
     def visit(self, parent, node):
         method = 'visit_' + type(node).__name__
@@ -962,11 +969,6 @@ class Visitor():
         method = 'visit_' + type(node).__name__
         raise SystemExit("Missing method: {}".format(method))
 
-from functools import wraps
-import pickle
-
-from graphviz import Digraph, Source
-from IPython.display import Image
 
 
 class Grapher(Visitor):
@@ -1153,7 +1155,7 @@ class Grapher(Visitor):
         s = Source(self.dot.source, filename='graph', format='png')
         return s.view()
 
-test_id = 10
+test_id = 1
 path = f'pas/test{test_id}.pas'
 
 with open(path, 'r') as source:
@@ -1162,5 +1164,10 @@ with open(path, 'r') as source:
     lexer = Lexer(text)
     tokens = lexer.lex()
 
-    for t in tokens:
-        print(t)
+    parser = Parser(tokens)
+    ast = parser.parse()
+
+    grapher = Grapher(ast)
+    img = grapher.graph()
+
+Image(img)

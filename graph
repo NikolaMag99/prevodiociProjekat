@@ -1,0 +1,15 @@
+digraph {
+	node [height=0.1 shape=box]
+	edge [arrowsize=0.5]
+	node1 [label=Program]
+	node2 [label=Block]
+	node1 -> node2
+	node3 [label=ProcCall]
+	node2 -> node3
+	node4 [label="Id : writeln"]
+	node3 -> node4
+	node5 [label=Args]
+	node3 -> node5
+	node6 [label="String : Hello world!"]
+	node5 -> node6
+}
