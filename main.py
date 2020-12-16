@@ -1,6 +1,5 @@
-
 import os
-
+import re
 from IPython.core.display import Image
 from graphviz import Source, Digraph
 
@@ -29,6 +28,7 @@ class Class(Enum):
     GT = auto()
     LTE = auto()
     GTE = auto()
+    DONJACRTA = auto()
 
     LPAREN = auto()
     RPAREN = auto()
@@ -76,6 +76,7 @@ class Class(Enum):
     ID = auto()
     EOF = auto()
 
+
 class Token:
     def __init__(self, class_, lexeme):
         self.class_ = class_
@@ -99,12 +100,13 @@ class Lexer:
         lexeme = self.text[self.pos]
         while self.pos + 1 < self.len and self.text[self.pos + 1].isdigit():
             lexeme += self.next_char()
-        if self.pos + 1 < self.len and self.text[self.pos + 1] == '.' and self.text[self.pos +2].isdigit():
+        if self.pos + 1 < self.len and self.text[self.pos + 1] == '.' and self.text[self.pos + 2].isdigit():
             lexeme += self.next_char()
             while self.pos + 1 < self.len and self.text[self.pos + 1].isdigit():
-              lexeme += self.next_char()
+                lexeme += self.next_char()
             token = Token(Class.REAL, lexeme)
-        else: token = Token(Class.INTEGER, lexeme)
+        else:
+            token = Token(Class.INTEGER, lexeme)
         return token
 
     def read_char(self):
@@ -113,7 +115,7 @@ class Lexer:
         self.pos += 1
         return lexeme
 
-    def read_string(self,char):
+    def read_string(self, char):
         lexeme = ''
         while self.pos + 1 < self.len and self.text[self.pos + 1] != char:
             lexeme += self.next_char()
@@ -122,7 +124,9 @@ class Lexer:
 
     def read_keyword(self):
         lexeme = self.text[self.pos]
-        while self.pos + 1 < self.len and self.text[self.pos + 1].isalnum():
+        while self.pos + 1 < self.len and self.text[self.pos + 1].isalnum() or self.text[self.pos + 1] == '_':
+            if self.text[self.pos] == '_':
+                self.next_char()
             lexeme += self.next_char()
         if lexeme == 'if':
             return Token(Class.IF, lexeme)
@@ -171,7 +175,7 @@ class Lexer:
         elif lexeme == 'until':
             return Token(Class.UNTIL, lexeme)
         elif lexeme == 'true' or lexeme == 'false':
-            return Token(Class.VALIDACIJA, lexeme)
+            return Token(Class.BOOLEAN, lexeme)
         elif lexeme == 'or':
             return Token(Class.OR, lexeme)
         elif lexeme == 'xor':
@@ -239,7 +243,7 @@ class Lexer:
                 token = Token(Class.NOT, '!')
                 self.pos -= 1
         elif curr == '=':
-          token = Token(Class.EQ, '=')
+            token = Token(Class.EQ, '=')
 
         elif curr == '<':
             curr = self.next_char()
@@ -297,7 +301,9 @@ class Lexer:
 
     def die(self, char):
         raise SystemExit("Unexpected character: {}".format(char))
-#---------------------------------------------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 class Node():
@@ -349,16 +355,19 @@ class While(Node):
         self.cond = cond
         self.block = block
 
+
 class RepeatUntil(Node):
     def __init__(self, cond, block):
         self.cond = cond
         self.block = block
+
 
 class For(Node):
     def __init__(self, init, cond, block):
         self.init = init
         self.cond = cond
         self.block = block
+
 
 class Var(Node):
     def __init__(self, block):
@@ -373,6 +382,7 @@ class FuncImpl(Node):
         self.block = block
         self.var = var
 
+
 class ProcImpl(Node):
     def __init__(self, id_, params, block, var):
         self.id_ = id_
@@ -380,10 +390,12 @@ class ProcImpl(Node):
         self.block = block
         self.var = var
 
+
 class ProcCall(Node):
     def __init__(self, id_, args):
         self.id_ = id_
         self.args = args
+
 
 class FuncCall(Node):
     def __init__(self, id_, args):
@@ -443,17 +455,32 @@ class String(Node):
     def __init__(self, value):
         self.value = value
 
+
 class Real(Node):
     def __init__(self, value):
         self.value = value
+
 
 class Boolean(Node):
     def __init__(self, value):
         self.value = value
 
+
 class Id(Node):
     def __init__(self, value):
         self.value = value
+
+
+class Cvor(Node):
+    def __init__(self, value, value2):
+        self.value = value
+        self.value2 = value2
+
+
+class Zaokruzivanje(Node):
+    def __init__(self, cvor, binOp):
+        self.cvor = cvor
+        self.binOp = binOp
 
 
 class BinOp(Node):
@@ -469,9 +496,9 @@ class UnOp(Node):
         self.first = first
 
 
-
 from functools import wraps
 import pickle
+
 
 class Parser:
     def __init__(self, tokens):
@@ -507,8 +534,8 @@ class Parser:
 
     def id_(self):
         # is_array_elem = self.prev.class_ != Class.TYPE
-        id_ = Id(self.curr.lexeme)
         prev = self.prev.class_
+        id_ = Id(self.curr.lexeme)
         self.eat(Class.ID)
         if self.curr.class_ == Class.LPAREN and self.is_func_call():
             self.eat(Class.LPAREN)
@@ -522,7 +549,7 @@ class Parser:
             id_ = ArrayElem(id_, index)
         if self.curr.class_ == Class.DVOTACKAJEDNAKO:
             self.eat(Class.DVOTACKAJEDNAKO)
-            expr = self.expr()
+            expr = self.logic()
             return DvotackaJednako(id_, expr)
         else:
             return id_
@@ -532,25 +559,6 @@ class Parser:
             self.eat(Class.VAR)
             block = self.block(True)
             return Var(block)
-        elif self.curr.class_ == Class.PROCEDURE:
-            self.eat(Class.PROCEDURE)
-            id_ = self.id_()
-            self.eat(Class.LPAREN)
-            params = self.params()
-            self.eat(Class.RPAREN)
-            self.eat(Class.SEMICOLON)
-            var = None
-            if self.curr.class_ == Class.VAR:
-                self.eat(Class.VAR)
-                block = self.block(True)
-                var = Var(block)
-            block = None
-            if self.curr.class_ == Class.BEGIN:
-                self.eat(Class.BEGIN)
-                block = self.block(False)
-                self.eat(Class.END)
-                self.eat(Class.SEMICOLON)
-            return ProcImpl(id_, params, block, var)
         elif self.curr.class_ == Class.FUNCTION:
             self.eat(Class.FUNCTION)
             id_ = self.id_()
@@ -578,39 +586,40 @@ class Parser:
             self.eat(Class.END)
             self.eat(Class.TACKA)
             return block;
+
         elif self.curr.class_ == Class.ID:
             id_ = Id(self.curr.lexeme)
             self.eat(Class.ID)
             variables = []
             variables.append(id_)
             if self.curr.class_ == (Class.COMMA):
-              while self.curr.class_ != Class.COLON:
-                self.eat(Class.COMMA)
-                id_ = Id(self.curr.lexeme)
-                self.eat(Class.ID)
-                variables.append(id_)
+                while self.curr.class_ != Class.COLON:
+                    self.eat(Class.COMMA)
+                    id_ = Id(self.curr.lexeme)
+                    self.eat(Class.ID)
+                    variables.append(id_)
             self.eat(Class.COLON)
             if self.curr.class_ == Class.ARRAY:
-                  self.eat(Class.ARRAY)
-                  self.eat(Class.LBRACKET)
-                  firstIndex = self.expr()
-                  self.eat(Class.TACKA)
-                  self.eat(Class.TACKA)
-                  lastIndex = self.expr()
-                  self.eat(Class.RBRACKET)
-                  self.eat(Class.OF)
-                  type_ = self.type_()
-                  elems = None
-                  if self.curr.class_ == Class.EQ:
-                      self.eat(Class.EQ)
-                      self.eat(Class.LPAREN)
-                      elems = self.elems()
-                      self.eat(Class.RPAREN)
-                  self.eat(Class.SEMICOLON)
-                  arrays = []
-                  for v in variables:
+                self.eat(Class.ARRAY)
+                self.eat(Class.LBRACKET)
+                firstIndex = self.expr()
+                self.eat(Class.TACKA)
+                self.eat(Class.TACKA)
+                lastIndex = self.expr()
+                self.eat(Class.RBRACKET)
+                self.eat(Class.OF)
+                type_ = self.type_()
+                elems = None
+                if self.curr.class_ == Class.EQ:
+                    self.eat(Class.EQ)
+                    self.eat(Class.LPAREN)
+                    elems = self.elems()
+                    self.eat(Class.RPAREN)
+                self.eat(Class.SEMICOLON)
+                arrays = []
+                for v in variables:
                     arrays.append(ArrayDecl(type_, v, firstIndex, lastIndex, elems))
-                  return arrays
+                return arrays
             else:
                 type_ = self.type_()
                 size = None
@@ -621,7 +630,7 @@ class Parser:
                 self.eat(Class.SEMICOLON)
                 decls = []
                 for v in variables:
-                   decls.append(Decl(type_, v, size))
+                    decls.append(Decl(type_, v, size))
                 return decls
 
     def if_(self):
@@ -667,13 +676,43 @@ class Parser:
 
     def repeat_(self):
         self.eat(Class.REPEAT)
-        self.eat(Class.BEGIN)
-        block = self.block(False)
-        self.eat(Class.END)
+        block = self.block_until()
         self.eat(Class.UNTIL)
         cond = self.logic()
         self.eat(Class.SEMICOLON)
         return RepeatUntil(cond, block)
+
+    def block_until(self):
+        nodes = []
+        while self.curr.class_ != Class.UNTIL:
+            if self.curr.class_ == Class.IF:
+                nodes.append(self.if_())
+            elif self.curr.class_ == Class.WHILE:
+                nodes.append(self.while_())
+            elif self.curr.class_ == Class.FOR:
+                nodes.append(self.for_())
+            elif self.curr.class_ == Class.REPEAT:
+                nodes.append(self.repeat_())
+            elif self.curr.class_ == Class.BREAK:
+                nodes.append(self.break_())
+            elif self.curr.class_ == Class.CONTINUE:
+                nodes.append(self.continue_())
+            elif self.curr.class_ == Class.EXIT:
+                nodes.append(self.exit_())
+            elif self.curr.class_ == Class.ID:
+                if self.jelIni():
+                    nodes.append(self.id_())
+                    self.eat(Class.SEMICOLON)
+                else:
+                    promenljiva = self.decl()
+                    if isinstance(promenljiva, list):
+                        while len(promenljiva) != 0:
+                            nodes.append(promenljiva.pop(0))
+                    else:
+                        nodes.append(promenljiva)
+            else:
+                self.die_deriv(self.block.__name__)
+        return Block(nodes)
 
     def block(self, isVar):
         nodes = []
@@ -697,31 +736,31 @@ class Parser:
                 nodes.append(self.exit_())
             elif self.curr.class_ == Class.ID:
                 if self.jelIni():
-                  nodes.append(self.id_())
-                  self.eat(Class.SEMICOLON)
+                    nodes.append(self.id_())
+                    self.eat(Class.SEMICOLON)
                 else:
-                  promenljiva = self.decl()
-                  if isinstance(promenljiva, list):
-                   while len(promenljiva) != 0:
-                     nodes.append(promenljiva.pop(0))
-                  else:
-                    nodes.append(promenljiva)
+                    promenljiva = self.decl()
+                    if isinstance(promenljiva, list):
+                        while len(promenljiva) != 0:
+                            nodes.append(promenljiva.pop(0))
+                    else:
+                        nodes.append(promenljiva)
             else:
                 self.die_deriv(self.block.__name__)
         return Block(nodes)
 
     @restorable
     def jelIni(self):
-         try:
+        try:
             self.eat(Class.ID)
             if self.is_func_call():
-              return True
+                return True
             if self.curr.class_ == Class.LBRACKET:
-              self.eat(Class.LBRACKET)
-              self.expr()
-              self.eat(Class.RBRACKET)
+                self.eat(Class.LBRACKET)
+                self.expr()
+                self.eat(Class.RBRACKET)
             return self.curr.class_ == Class.DVOTACKAJEDNAKO
-         except:
+        except:
             return False
 
     def params(self):
@@ -733,32 +772,32 @@ class Parser:
             arrays = []
             array = False
             if self.curr.class_ == Class.VAR:
-               self.eat(Class.VAR)
-               array = True
+                self.eat(Class.VAR)
+                array = True
             variables.append(Id(self.curr.lexeme))
             self.eat(Class.ID)
             if self.curr.class_ == (Class.COMMA):
-              while self.curr.class_ != Class.COLON:
-                self.eat(Class.COMMA)
-                id_ = Id(self.curr.lexeme)
-                self.eat(Class.ID)
-                variables.append(id_)
+                while self.curr.class_ != Class.COLON:
+                    self.eat(Class.COMMA)
+                    id_ = Id(self.curr.lexeme)
+                    self.eat(Class.ID)
+                    variables.append(id_)
             self.eat(Class.COLON)
             if self.curr.class_ == Class.ARRAY:
-              self.eat(Class.ARRAY)
-              self.eat(Class.OF)
+                self.eat(Class.ARRAY)
+                self.eat(Class.OF)
             type_ = self.type_()
             size = None
             if array:
-              for v in variables:
-               params.append(ArrayDecl(type, v,None,None,None))
+                for v in variables:
+                    params.append(ArrayDecl(type, v, None, None, None))
             else:
-              if type_.value == "string" and self.curr.class_ == Class.LBRACKET:
+                if type_.value == "string" and self.curr.class_ == Class.LBRACKET:
                     self.eat(Class.LBRACKET)
                     size = self.expr()
                     self.eat(Class.RBRACKET)
-              for v in variables:
-                params.append(Decl(type_, v,size))
+                for v in variables:
+                    params.append(Decl(type_, v, size))
         return Params(params)
 
     def args(self):
@@ -880,6 +919,15 @@ class Parser:
                 self.eat(Class.MINUS)
                 second = self.term()
                 first = BinOp(op, first, second)
+        if self.curr.class_ == Class.COLON:
+            self.eat(Class.COLON)
+            broj = Integer(self.curr.lexeme)
+            self.eat(Class.INTEGER)
+            self.eat(Class.COLON)
+            drugiBroj = Integer(self.curr.lexeme)
+            self.eat(Class.INTEGER)
+            zaokruzivanje = Cvor(broj, drugiBroj)
+            first = Zaokruzivanje(zaokruzivanje, first)
         return first
 
     def compare(self):
@@ -917,25 +965,23 @@ class Parser:
         else:
             return first
 
-    def logic(self):
+    def logic_term(self):
         first = self.compare()
-        if self.curr.class_ == Class.AND:
+        while self.curr.class_ == Class.AND:
             op = self.curr.lexeme
             self.eat(Class.AND)
             second = self.compare()
-            return BinOp(op, first, second)
-        elif self.curr.class_ == Class.OR:
+            first = BinOp(op, first, second)
+        return first
+
+    def logic(self):
+        first = self.logic_term()
+        while self.curr.class_ == Class.OR:
             op = self.curr.lexeme
             self.eat(Class.OR)
-            second = self.compare()
-            return BinOp(op, first, second)
-        elif self.curr.class_ == Class.XOR:
-            op = self.curr.lexeme
-            self.eat(Class.XOR)
-            second = self.compare()
-            return BinOp(op, first, second)
-        else:
-            return first
+            second = self.logic_term()
+            first = BinOp(op, first, second)
+        return first
 
     @restorable
     def is_func_call(self):
@@ -958,7 +1004,8 @@ class Parser:
     def die_type(self, expected, found):
         self.die("Expected: {}, Found: {}".format(expected, found))
 
-#----------------------------------------------------
+
+# ----------------------------------------------------
 class Visitor():
     def visit(self, parent, node):
         method = 'visit_' + type(node).__name__
@@ -970,193 +1017,340 @@ class Visitor():
         raise SystemExit("Missing method: {}".format(method))
 
 
-
-class Grapher(Visitor):
+class Generator(Visitor):
     def __init__(self, ast):
         self.ast = ast
-        self._count = 1
-        self.dot = Digraph()
-        self.dot.node_attr['shape'] = 'box'
-        self.dot.node_attr['height'] = '0.1'
-        self.dot.edge_attr['arrowsize'] = '0.5'
+        self.py = ""
+        self.level = 0
 
-    def add_node(self, parent, node, name=None):
-        node._index = self._count
-        self._count += 1
-        caption = type(node).__name__
-        if name is not None:
-            caption = '{} : {}'.format(caption, name)
-        self.dot.node('node{}'.format(node._index), caption)
-        if parent is not None:
-            self.add_edge(parent, node)
+    integerFlag = False
+    charFlag = False
+    realFlag = False
 
-    def add_edge(self, parent, node):
-        src, dest = parent._index, node._index
-        self.dot.edge('node{}'.format(src), 'node{}'.format(dest))
+    def append(self, text):
+        self.py += str(text)
+
+    def newline(self):
+        self.append('\n')
+
+    def indent(self):
+        for i in range(self.level):
+            self.append('\t')
 
     def visit_Program(self, parent, node):
-        self.add_node(parent, node)
         for n in node.nodes:
             self.visit(node, n)
+        self.newline()
+        self.level += 1
+        self.indent()
+        self.newline()
+        self.level -= 1
+
+    def visit_Var(self, parent, node):
+        self.append('int main() {')
+        self.visit(node, node.block)
 
     def visit_Decl(self, parent, node):
-        self.add_node(parent, node)
+        self.indent()
         self.visit(node, node.type_)
         self.visit(node, node.id_)
-        if node.size is not None:
-          self.visit(node, node.size)
+        self.append(';')
 
     def visit_ArrayDecl(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.type_)
         self.visit(node, node.id_)
-        if node.firstIndex is not None:
-            self.visit(node, node.firstIndex)
-        if node.lastIndex is not None:
-            self.visit(node, node.lastIndex)
         if node.elems is not None:
+            self.append(' = [')
             self.visit(node, node.elems)
+            self.append(']')
+        elif node.size is not None:
+            self.append(' = ')
+            self.visit(node, node.size)
+            self.append(' * [None]')
 
     def visit_ArrayElem(self, parent, node):
-        self.add_node(parent, node)
         self.visit(node, node.id_)
+        self.append('[')
         self.visit(node, node.index)
+        self.append(']')
 
     def visit_DvotackaJednako(self, parent, node):
-        self.add_node(parent, node)
         self.visit(node, node.id_)
+        self.append(' = ')
         self.visit(node, node.expr)
 
     def visit_If(self, parent, node):
-        self.add_node(parent, node)
+        self.append('if ')
         self.visit(node, node.cond)
+        self.append(':')
+        self.newline()
         self.visit(node, node.true)
         if node.false is not None:
+            self.indent()
+            self.append('else:')
+            self.newline()
             self.visit(node, node.false)
 
     def visit_While(self, parent, node):
-        self.add_node(parent, node)
+        self.append('while ')
         self.visit(node, node.cond)
-        self.visit(node, node.block)
-
-    def visit_RepeatUntil(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.cond)
+        self.append(':')
+        self.newline()
         self.visit(node, node.block)
 
     def visit_For(self, parent, node):
-        self.add_node(parent, node)
         self.visit(node, node.init)
+        self.newline()
+        self.indent()
+        self.append('while ')
         self.visit(node, node.cond)
+        self.append(':')
+        self.newline()
         self.visit(node, node.block)
+        self.level += 1
+        self.indent()
+        self.visit(node, node.step)
+        self.level -= 1
 
     def visit_FuncImpl(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.type_)
-        self.visit(node, node.id_)
+        self.append('def ')
+        self.append(node.id_.value)
+        self.append('(')
         self.visit(node, node.params)
+        self.append(');')
+        self.newline()
         self.visit(node, node.block)
-        self.visit(node, node.var)
-
-    def visit_ProcImpl(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.id_)
-        self.visit(node, node.params)
-        self.visit(node, node.block)
-        self.visit(node, node.var)
 
     def visit_FuncCall(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.id_)
-        self.visit(node, node.args)
+        func = node.id_.value
+        args = node.args.args
+
+        # elif func == 'scanf':
+
+        if func == 'strlen':
+            self.append('len(')
+            self.visit(node, node.args)
+            self.append(')')
+        elif func == 'strcat':
+            self.visit(node.args, args[0])
+            self.append(' += ')
+            self.visit(node.args, args[1])
+            self.newline()
+            self.indent()
+        else:
+            self.append(func)
+            self.append('(')
+            self.visit(node, node.args)
+            self.append(')')
 
     def visit_ProcCall(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.id_)
-        self.visit(node, node.args)
+        func = node.id_.value
+        args = node.args.args
 
+        if func == 'write':
+            self.indent()
+            self.append('printf("')
 
-    def visit_Var(self, parent, node):
-        self.add_node(parent, node)
-        self.visit(node, node.block)
+            if self.realFlag is True:
+                for i in args:
+                    if type(i) == Char:
+                        continue
+                    if i == args[-1]:
+                        self.append('%.2f')
+                        continue
+                    self.append('%.2f ')
+                self.append('",')
+
+                for n in args:
+                    if type(n) == Char:
+                        continue
+                    self.visit(node, n)
+                    if n == args[-1]:
+                        pass
+                    else:
+                        self.append(',')
+
+            if self.charFlag is True:
+                for i in args:
+                    if i == args[-1]:
+                        self.append('%c')
+                        continue
+                    self.append('%c ')
+                self.append('", c - 32')
+
+            if self.integerFlag is True:
+                for i in args:
+                    if type(i) == Char:
+                        continue
+                    if i == args[-1]:
+                        self.append('%d')
+                        continue
+                    self.append('%d ')
+                self.append('",')
+
+                for n in args:
+                    if type(n) == Char:
+                        continue
+                    self.visit(node, n)
+                    if n == args[-1]:
+                        pass
+                    else:
+                        self.append(',')
+            self.append(');')
+            self.newline()
+            self.indent()
+            self.append('return 0;')
+            self.newline()
+            self.level -= 1
+            self.indent()
+            self.append('}')
+            self.integerFlag = False
+            self.charFlag = False
+
+        if func == 'readln':
+            self.indent()
+            self.append('scanf("')
+
+            if self.realFlag is True:
+                for i in args:
+                    self.append('%f')
+                self.append('",')
+
+            if self.charFlag is True:
+                for i in args:
+                    self.append('%c')
+                self.append('",')
+
+            if self.integerFlag is True:
+                for i in args:
+                    self.append('%d')
+                self.append('",')
+
+            for n in args:
+                self.visit(node, n)
+                if n == args[-1]:
+                    pass
+                else:
+                    self.append(',')
+
+            self.append(');')
 
     def visit_Block(self, parent, node):
-        self.add_node(parent, node)
+        self.level += 1
+        self.newline()
         for n in node.nodes:
             self.visit(node, n)
+            self.newline()
+        self.level -= 1
+
+    def visit_Zaokruzivanje(self, parent, node):
+        self.visit(node, node.cvor)
+        self.visit(node, node.binOp)
+
+    def visit_Cvor(self, parent, node):
+        pass
+
+    def visit_BlockMain(self, parent, node):
+        self.level += 1
+        for n in node.nodes:
+            self.indent()
+            self.visit(node, n)
+            self.newline()
+        self.level -= 1
 
     def visit_Params(self, parent, node):
-        self.add_node(parent, node)
-        for p in node.params:
-            self.visit(node, p)
+        for i, p in enumerate(node.params):
+            if i > 0:
+                self.append(', ')
+            self.visit(p, p.id_)
 
     def visit_Args(self, parent, node):
-        self.add_node(parent, node)
-        for a in node.args:
+        for i, a in enumerate(node.args):
+            if i > 0:
+                self.append(', ')
             self.visit(node, a)
 
     def visit_Elems(self, parent, node):
-        self.add_node(parent, node)
-        for e in node.elems:
+        for i, e in enumerate(node.elems):
+            if i > 0:
+                self.append(', ')
             self.visit(node, e)
 
-    def visit_Break(self, parent, node):
-        self.add_node(parent, node)
+    def visit_Bre1k(self, parent, node):
+        self.append('break')
 
     def visit_Continue(self, parent, node):
-        self.add_node(parent, node)
+        self.append('continue')
 
     def visit_Exit(self, parent, node):
-        self.add_node(parent, node)
+        self.append('return')
         if node.expr is not None:
+            self.append(' ')
             self.visit(node, node.expr)
 
     def visit_Type(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
+        if node.value == 'integer':
+            self.integerFlag = True
+            self.append('int ')
+        if node.value == 'char':
+            self.append('char ')
+            self.charFlag = True
+        if node.value == 'real':
+            self.append('float ')
+            self.realFlag = True
 
     def visit_Integer(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
+        self.append(node.value)
 
     def visit_Char(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
+        if parent.id_.value == 'write':
+            return
+        self.append('"')
+        self.append(node.value)
+        self.append('"')
 
     def visit_String(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
-
-    def visit_Boolean(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
-
-    def visit_Real(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
+        self.append(node.value)
 
     def visit_Id(self, parent, node):
-        name = node.value
-        self.add_node(parent, node, name)
+        if type(parent) == BinOp:
+            self.append(node.value)
+            return
+        if parent.id_.value == 'readln':
+            self.append('&' + node.value)
+            return
+        self.append(node.value)
 
     def visit_BinOp(self, parent, node):
-        name = node.symbol
-        self.add_node(parent, node, name)
         self.visit(node, node.first)
+        if node.symbol == 'and ':
+            self.append(' && ')
+        elif node.symbol == 'or':
+            self.append(' || ')
+        elif node.symbol == 'mod':
+            self.append(' % ')
+        elif node.symbol == 'div':
+            self.append(' / ')
+        else:
+            self.append(node.symbol)
         self.visit(node, node.second)
 
     def visit_UnOp(self, parent, node):
-        name = node.symbol
-        self.add_node(parent, node, name)
+        if node.symbol == '!':
+            self.append('not ')
+        elif node.symbol != '&':
+            self.append(node.symbol)
         self.visit(node, node.first)
 
-    def graph(self):
+    def generate(self, path):
         self.visit(None, self.ast)
-        s = Source(self.dot.source, filename='graph', format='png')
-        return s.view()
+        self.py = re.sub('\n\s*\n', '\n', self.py)
+        with open(path, 'w') as source:
+            source.write(self.py)
+        return path
 
-test_id = 1
-path = f'pas/test{test_id}.pas'
+
+test_id =9
+path = f'Druga faza/0{test_id}/src.pas'
 
 with open(path, 'r') as source:
     text = source.read()
@@ -1167,7 +1361,5 @@ with open(path, 'r') as source:
     parser = Parser(tokens)
     ast = parser.parse()
 
-    grapher = Grapher(ast)
-    img = grapher.graph()
-
-Image(img)
+    generator = Generator(ast)
+    code = generator.generate('main.c')
