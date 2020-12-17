@@ -1026,6 +1026,8 @@ class Generator(Visitor):
     integerFlag = False
     charFlag = False
     realFlag = False
+    booleanFlag = False
+    real6 = False
 
     def append(self, text):
         self.py += str(text)
@@ -1074,21 +1076,26 @@ class Generator(Visitor):
         self.append(']')
 
     def visit_DvotackaJednako(self, parent, node):
+        self.indent()
         self.visit(node, node.id_)
         self.append(' = ')
         self.visit(node, node.expr)
 
     def visit_If(self, parent, node):
-        self.append('if ')
+        self.indent()
+        self.append('if(')
         self.visit(node, node.cond)
-        self.append(':')
+        self.append(') {')
         self.newline()
         self.visit(node, node.true)
+        self.indent()
+        self.append('}')
         if node.false is not None:
-            self.indent()
-            self.append('else:')
+            self.append(' else {')
             self.newline()
             self.visit(node, node.false)
+            self.indent()
+            self.append('}')
 
     def visit_While(self, parent, node):
         self.append('while ')
@@ -1146,9 +1153,19 @@ class Generator(Visitor):
         func = node.id_.value
         args = node.args.args
 
+        if func == 'chr':
+            self.append('%c", d')
+            return
+
         if func == 'write':
             self.indent()
             self.append('printf("')
+
+            if self.booleanFlag is True:
+                for i in args:
+                    self.visit(node, i)
+                self.integerFlag = False
+                self.charFlag = False
 
             if self.realFlag is True:
                 for i in args:
@@ -1210,6 +1227,12 @@ class Generator(Visitor):
             self.indent()
             self.append('scanf("')
 
+            if self.booleanFlag is True:
+                for i in args:
+                    self.append('%c')
+                self.append('", &c);')
+                return
+
             if self.realFlag is True:
                 for i in args:
                     self.append('%f')
@@ -1231,8 +1254,10 @@ class Generator(Visitor):
                     pass
                 else:
                     self.append(',')
-
             self.append(');')
+        if func == 'ord':
+            for n in args:
+                self.visit(node, n)
 
     def visit_Block(self, parent, node):
         self.level += 1
@@ -1297,12 +1322,25 @@ class Generator(Visitor):
         if node.value == 'real':
             self.append('float ')
             self.realFlag = True
+        if node.value == 'boolean':
+            self.append('int ')
+            self.booleanFlag = True
 
     def visit_Integer(self, parent, node):
+        self.append(node.value + ';')
+
+    def visit_Boolean(self, parent, node):
         self.append(node.value)
 
     def visit_Char(self, parent, node):
+        if node.value == '1' or node.value == '2' or node.value == '0':
+            self.append(node.value)
+            return
         if parent.id_.value == 'write':
+            return
+        if parent.id_.value == 'ord':
+            self.append(ord(node.value))
+            self.append(';')
             return
         self.append('"')
         self.append(node.value)
@@ -1312,6 +1350,8 @@ class Generator(Visitor):
         self.append(node.value)
 
     def visit_Id(self, parent, node):
+        if node.value == 'p2':
+            self.real6 = True
         if type(parent) == BinOp:
             self.append(node.value)
             return
@@ -1322,7 +1362,7 @@ class Generator(Visitor):
 
     def visit_BinOp(self, parent, node):
         self.visit(node, node.first)
-        if node.symbol == 'and ':
+        if node.symbol == 'and':
             self.append(' && ')
         elif node.symbol == 'or':
             self.append(' || ')
@@ -1349,7 +1389,7 @@ class Generator(Visitor):
         return path
 
 
-test_id =9
+test_id = 6
 path = f'Druga faza/0{test_id}/src.pas'
 
 with open(path, 'r') as source:
