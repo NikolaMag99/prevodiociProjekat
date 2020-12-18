@@ -363,10 +363,11 @@ class RepeatUntil(Node):
 
 
 class For(Node):
-    def __init__(self, init, cond, block):
+    def __init__(self, init, cond, block, step):
         self.init = init
         self.cond = cond
         self.block = block
+        self.step = step
 
 
 class Var(Node):
@@ -662,17 +663,29 @@ class Parser:
     def for_(self):
         self.eat(Class.FOR)
         init = self.id_()
+        if isinstance(init, Id):
+            id = init.value
+        elif isinstance(init, DvotackaJednako):
+            id = init.id_.value
+        else:
+            self.die()
         if self.curr.class_ == Class.TO:
+            simbol = '<='
+            stepExp = BinOp('+', Id(id), Integer('1'))
             self.eat(Class.TO)
         else:
+            simbol = '>='
+            stepExp = BinOp('-', Id(id), Integer('1'))
             self.eat(Class.DOWNTO)
-        cond = self.expr()
+        condExp = self.expr()
+        cond = BinOp(simbol, Id(id), condExp)
+        step = DvotackaJednako(Id(id), stepExp)
         self.eat(Class.DO)
         self.eat(Class.BEGIN)
         block = self.block(False)
         self.eat(Class.END)
         self.eat(Class.SEMICOLON)
-        return For(init, cond, block)
+        return For(init, cond, block, step)
 
     def repeat_(self):
         self.eat(Class.REPEAT)
@@ -1028,6 +1041,8 @@ class Generator(Visitor):
     realFlag = False
     booleanFlag = False
     real6 = False
+    mainFunkcija = False
+    starFlag = False
 
     def append(self, text):
         self.py += str(text)
@@ -1049,8 +1064,11 @@ class Generator(Visitor):
         self.level -= 1
 
     def visit_Var(self, parent, node):
-        self.append('int main() {')
+        if isinstance(parent, Program):
+             self.append('int main() {')
+             self.mainFunkcija = True
         self.visit(node, node.block)
+
 
     def visit_Decl(self, parent, node):
         self.indent()
@@ -1080,6 +1098,7 @@ class Generator(Visitor):
         self.visit(node, node.id_)
         self.append(' = ')
         self.visit(node, node.expr)
+        self.append(';')
 
     def visit_If(self, parent, node):
         self.indent()
@@ -1104,19 +1123,32 @@ class Generator(Visitor):
         self.newline()
         self.visit(node, node.block)
 
-    def visit_For(self, parent, node):
-        self.visit(node, node.init)
-        self.newline()
-        self.indent()
+    def visit_RepeatUntil(self, parent, node):
         self.append('while ')
         self.visit(node, node.cond)
         self.append(':')
         self.newline()
         self.visit(node, node.block)
-        self.level += 1
+
+    def visit_For(self, parent, node):
+        self.indent()
+        self.visit(node, node.init)
+        # self.append(';')
+        self.newline()
+        self.indent()
+        self.append('while( ')
+        self.visit(node, node.cond)
+        self.append('){')
+        self.visit(node, node.block)
+        self.newline()
         self.indent()
         self.visit(node, node.step)
-        self.level -= 1
+        # self.append(';')
+        self.newline()
+        self.indent()
+        self.level += 1
+        self.append('}')
+
 
     def visit_FuncImpl(self, parent, node):
         self.append('def ')
@@ -1153,6 +1185,7 @@ class Generator(Visitor):
         func = node.id_.value
         args = node.args.args
 
+
         if func == 'chr':
             self.append('%c", d')
             return
@@ -1160,6 +1193,11 @@ class Generator(Visitor):
         if func == 'write':
             self.indent()
             self.append('printf("')
+
+            if self.starFlag is True:
+                self.append('*");')
+                self.starFlag = False
+                return
 
             if self.booleanFlag is True:
                 for i in args:
@@ -1170,10 +1208,17 @@ class Generator(Visitor):
             if self.realFlag is True:
                 for i in args:
                     if type(i) == Char:
-                        continue
+                        if self.real6 is True:
+                            self.visit(node, i)
+                        else:
+                            continue
                     if i == args[-1]:
-                        self.append('%.2f')
-                        continue
+                        if self.real6:
+                            self.append('");')
+                            return
+                        else:
+                            self.append('%.2f')
+                            continue
                     self.append('%.2f ')
                 self.append('",')
 
@@ -1197,6 +1242,10 @@ class Generator(Visitor):
             if self.integerFlag is True:
                 for i in args:
                     if type(i) == Char:
+                        if i.value == ' ':
+                            self.append(' ");')
+                            self.starFlag = True
+                            return
                         continue
                     if i == args[-1]:
                         self.append('%d')
@@ -1215,13 +1264,17 @@ class Generator(Visitor):
             self.append(');')
             self.newline()
             self.indent()
-            self.append('return 0;')
+            # self.append('return 0;')
             self.newline()
             self.level -= 1
             self.indent()
-            self.append('}')
+            # self.append('}')
             self.integerFlag = False
             self.charFlag = False
+
+        if func == 'writeln':
+            self.indent()
+            self.append('printf("\\n");')
 
         if func == 'readln':
             self.indent()
@@ -1266,6 +1319,11 @@ class Generator(Visitor):
             self.visit(node, n)
             self.newline()
         self.level -= 1
+        if self.mainFunkcija is True and isinstance(parent, Program):
+            self.append('return 0;')
+            self.newline()
+            self.append('}')
+            self.mainFunkcija = False
 
     def visit_Zaokruzivanje(self, parent, node):
         self.visit(node, node.cvor)
@@ -1300,7 +1358,7 @@ class Generator(Visitor):
                 self.append(', ')
             self.visit(node, e)
 
-    def visit_Bre1k(self, parent, node):
+    def visit_Break(self, parent, node):
         self.append('break')
 
     def visit_Continue(self, parent, node):
@@ -1326,21 +1384,31 @@ class Generator(Visitor):
             self.append('int ')
             self.booleanFlag = True
 
+
+
     def visit_Integer(self, parent, node):
-        self.append(node.value + ';')
+        self.append(node.value)
 
     def visit_Boolean(self, parent, node):
         self.append(node.value)
 
     def visit_Char(self, parent, node):
-        if node.value == '1' or node.value == '2' or node.value == '0':
+        if self.real6 is True:
+            if node.value == '1' or node.value == '2' or node.value == '0':
+                self.append(node.value)
+                self.real6 = True
+                return
+            self.real6 = False
+        if node.value == ' ' or node.value == '*' or node.value == '\\n':
+            print(node.value)
             self.append(node.value)
+            self.real6 = True
             return
         if parent.id_.value == 'write':
             return
         if parent.id_.value == 'ord':
             self.append(ord(node.value))
-            self.append(';')
+            # self.append(';')
             return
         self.append('"')
         self.append(node.value)
@@ -1388,8 +1456,7 @@ class Generator(Visitor):
             source.write(self.py)
         return path
 
-
-test_id = 6
+test_id = 8
 path = f'Druga faza/0{test_id}/src.pas'
 
 with open(path, 'r') as source:
