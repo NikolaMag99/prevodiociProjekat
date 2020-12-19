@@ -581,6 +581,25 @@ class Parser:
                 self.eat(Class.END)
                 self.eat(Class.SEMICOLON)
             return FuncImpl(type_, id_, params, block, var)
+        elif self.curr.class_ == Class.PROCEDURE:
+            self.eat(Class.PROCEDURE)
+            id_ = self.id_()
+            self.eat(Class.LPAREN)
+            params = self.params()
+            self.eat(Class.RPAREN)
+            self.eat(Class.SEMICOLON)
+            var = None
+            if self.curr.class_ == Class.VAR:
+                self.eat(Class.VAR)
+                block = self.block(True)
+                var = Var(block)
+            block = None
+            if self.curr.class_ == Class.BEGIN:
+                self.eat(Class.BEGIN)
+                block = self.block(False)
+                self.eat(Class.END)
+                self.eat(Class.SEMICOLON)
+            return ProcImpl(id_, params, block, var)
         elif self.curr.class_ == Class.BEGIN:
             self.eat(Class.BEGIN)
             block = self.block(False)
@@ -1035,6 +1054,7 @@ class Generator(Visitor):
         self.ast = ast
         self.py = ""
         self.level = 0
+        self.mapa = {}
 
     integerFlag = False
     charFlag = False
@@ -1043,6 +1063,8 @@ class Generator(Visitor):
     real6 = False
     mainFunkcija = False
     starFlag = False
+    iflag = False
+    flag8 = False
 
     def append(self, text):
         self.py += str(text)
@@ -1063,7 +1085,9 @@ class Generator(Visitor):
         self.newline()
         self.level -= 1
 
+
     def visit_Var(self, parent, node):
+
         if isinstance(parent, Program):
              self.append('int main() {')
              self.mainFunkcija = True
@@ -1073,25 +1097,32 @@ class Generator(Visitor):
     def visit_Decl(self, parent, node):
         self.indent()
         self.visit(node, node.type_)
+        self.mapa[node.id_.value] = node.type_.value
         self.visit(node, node.id_)
         self.append(';')
 
-    def visit_ArrayDecl(self, parent, node):
-        self.visit(node, node.id_)
-        if node.elems is not None:
-            self.append(' = [')
-            self.visit(node, node.elems)
-            self.append(']')
-        elif node.size is not None:
-            self.append(' = ')
-            self.visit(node, node.size)
-            self.append(' * [None]')
+    def visit_NoneType(self, parent, node):
+        pass
 
-    def visit_ArrayElem(self, parent, node):
+    def visit_ArrayDecl(self, parent, node):
+        self.mapa[node.id_.value] = node.type_.value
+        self.visit(node, node.type_)
         self.visit(node, node.id_)
         self.append('[')
-        self.visit(node, node.index)
+        self.visit(node, node.lastIndex)
+        self.append('-')
+        self.visit(node, node.firstIndex)
+        self.append('+1')
         self.append(']')
+        self.append(';')
+
+    def visit_ArrayElem(self, parent, node):
+        self.append(node.id_.value)
+        self.append('[')
+        self.visit(node, node.index)
+        self.append('-1')
+        self.append(']')
+
 
     def visit_DvotackaJednako(self, parent, node):
         self.indent()
@@ -1124,11 +1155,14 @@ class Generator(Visitor):
         self.visit(node, node.block)
 
     def visit_RepeatUntil(self, parent, node):
-        self.append('while ')
-        self.visit(node, node.cond)
-        self.append(':')
-        self.newline()
+        self.append('do {')
         self.visit(node, node.block)
+        self.newline()
+        self.append('}')
+        self.append('while(!')
+        self.visit(node, node.cond)
+        self.append(');')
+        self.newline()
 
     def visit_For(self, parent, node):
         self.indent()
@@ -1151,166 +1185,298 @@ class Generator(Visitor):
 
 
     def visit_FuncImpl(self, parent, node):
-        self.append('def ')
+        self.mapa[node.id_.value] = node.type_.value
+        self.visit(node, node.type_)
+        self.append(' ')
         self.append(node.id_.value)
         self.append('(')
         self.visit(node, node.params)
-        self.append(');')
+        self.append('){')
+        self.newline()
+        self.visit(node, node.var)
         self.newline()
         self.visit(node, node.block)
+        self.append('}')
 
     def visit_FuncCall(self, parent, node):
-        func = node.id_.value
-        args = node.args.args
-
-        # elif func == 'scanf':
-
-        if func == 'strlen':
-            self.append('len(')
-            self.visit(node, node.args)
-            self.append(')')
-        elif func == 'strcat':
-            self.visit(node.args, args[0])
-            self.append(' += ')
-            self.visit(node.args, args[1])
-            self.newline()
-            self.indent()
-        else:
-            self.append(func)
-            self.append('(')
-            self.visit(node, node.args)
-            self.append(')')
+        pass
 
     def visit_ProcCall(self, parent, node):
         func = node.id_.value
         args = node.args.args
 
-
-        if func == 'chr':
-            self.append('%c", d')
-            return
-
-        if func == 'write':
+        if func == 'write' or func == 'writeln':
             self.indent()
             self.append('printf("')
 
-            if self.starFlag is True:
-                self.append('*");')
-                self.starFlag = False
-                return
-
-            if self.booleanFlag is True:
-                for i in args:
-                    self.visit(node, i)
-                self.integerFlag = False
-                self.charFlag = False
-
-            if self.realFlag is True:
-                for i in args:
-                    if type(i) == Char:
-                        if self.real6 is True:
-                            self.visit(node, i)
-                        else:
-                            continue
-                    if i == args[-1]:
-                        if self.real6:
-                            self.append('");')
-                            return
-                        else:
-                            self.append('%.2f')
-                            continue
-                    self.append('%.2f ')
-                self.append('",')
-
-                for n in args:
-                    if type(n) == Char:
-                        continue
-                    self.visit(node, n)
-                    if n == args[-1]:
-                        pass
-                    else:
-                        self.append(',')
-
-            if self.charFlag is True:
-                for i in args:
-                    if i == args[-1]:
+            neka2 = []
+            for n in args:
+                if isinstance(n, Zaokruzivanje):
+                    self.append('%')
+                    self.append(n.cvor.value.value)
+                    self.append('.')
+                    self.append(n.cvor.value2.value)
+                    self.append('f')
+                    neka2.append(n)
+                elif isinstance(n, BinOp):
+                    self.append('%d')
+                    neka2.append(n)
+                elif isinstance(n, ProcCall):
+                    if n.id_.value == 'chr':
                         self.append('%c')
-                        continue
-                    self.append('%c ')
-                self.append('", c - 32')
-
-            if self.integerFlag is True:
-                for i in args:
-                    if type(i) == Char:
-                        if i.value == ' ':
-                            self.append(' ");')
-                            self.starFlag = True
-                            return
-                        continue
-                    if i == args[-1]:
+                    elif n.id_.value == 'ord':
                         self.append('%d')
-                        continue
-                    self.append('%d ')
-                self.append('",')
+                    else:
+                        promenljiva2 = self.mapa[n.id_.value]
+                        if promenljiva2 == 'integer':
+                            self.append('%d')
+                        elif promenljiva2 == 'real':
+                            self.append('%f')
+                        elif promenljiva2 == 'char':
+                            self.append('%c')
+                        elif promenljiva2 == 'boolean':
+                            self.append('%d')
+                        elif promenljiva2 == 'string':
+                            self.append('%s')
+                    neka2.append(n)
 
-                for n in args:
-                    if type(n) == Char:
-                        continue
+                elif isinstance(n, ArrayElem) and n.id_.value in self.mapa.keys():
+                    neka2.append(n)
+                    promenljiva = self.mapa[n.id_.value ]
+                    if promenljiva == 'integer':
+                        self.append('%d')
+                    elif promenljiva == 'real':
+                        self.append('%f')
+                    elif promenljiva == 'char':
+                        self.append('%c')
+                    elif promenljiva == 'boolean':
+                        self.append('%d')
+                    elif promenljiva == 'string':
+                        self.append('%s')
+
+                elif isinstance(n, Id) and n.value in self.mapa.keys():
+                    neka2.append(n)
+                    promenljiva = self.mapa[n.value]
+                    if promenljiva == 'integer':
+                        self.append('%d')
+                    elif promenljiva == 'real':
+                        self.append('%f')
+                    elif promenljiva == 'char':
+                        self.append('%c')
+                    elif promenljiva == 'boolean':
+                        self.append('%d')
+                    elif promenljiva == 'string':
+                        self.append('%s')
+                else:
                     self.visit(node, n)
-                    if n == args[-1]:
+            self.append('"')
+            if len(neka2) != 0:
+                self.append(',')
+                for n in neka2:
+                    self.visit(args, n)
+                    if n == neka2[-1]:
                         pass
                     else:
                         self.append(',')
             self.append(');')
-            self.newline()
-            self.indent()
-            # self.append('return 0;')
-            self.newline()
-            self.level -= 1
-            self.indent()
-            # self.append('}')
-            self.integerFlag = False
-            self.charFlag = False
+            if func == 'writeln':
+                self.indent()
+                self.newline()
+                self.indent()
+                self.append('printf("\\n");')
 
-        if func == 'writeln':
-            self.indent()
-            self.append('printf("\\n");')
+            # if self.starFlag is True:
+            #     self.append('*");')
+            #     self.starFlag = False
+            #     return
+            #
+            # if self.booleanFlag is True:
+            #     for i in args:
+            #         self.visit(node, i)
+            #     self.integerFlag = False
+            #     self.charFlag = False
+            #
+            # if self.realFlag is True:
+            #     for i in args:
+            #         if type(i) == Char:
+            #             if self.real6 is True:
+            #                 self.visit(node, i)
+            #             else:
+            #                 continue
+            #         if i == args[-1]:
+            #             if self.real6:
+            #                 self.append('");')
+            #                 return
+            #             else:
+            #                 self.append('%.2f')
+            #                 continue
+            #         self.append('%.2f ')
+            #     self.append('",')
+            #
+            #     for n in args:
+            #         if type(n) == Char:
+            #             continue
+            #         self.visit(node, n)
+            #         if n == args[-1]:
+            #             pass
+            #         else:
+            #             self.append(',')
+            #
+            # if self.charFlag is True:
+            #     for i in args:
+            #         if i == args[-1]:
+            #             self.append('%c')
+            #             continue
+            #         self.append('%c ')
+            #     self.append('", c - 32')
+            #
+            # if self.integerFlag is True:
+            #     for i in args:
+            #         if type(i) == Char:
+            #             if i.value == ' ' and self.iflag is True:
+            #                 self.append(' ");')
+            #                 self.starFlag = True
+            #                 return
+            #             continue
+            #         if i == args[-1]:
+            #             self.append('%d')
+            #             continue
+            #         self.append('%d ')
+            #     self.append('",')
+            #
+            #     for n in args:
+            #         if type(n) == Char:
+            #             continue
+            #         self.visit(node, n)
+            #         if n == args[-1]:
+            #             pass
+            #         else:
+            #             self.append(',')
+            # self.append(');')
+            # self.newline()
+            # self.indent()
+            # # self.append('return 0;')
+            # self.newline()
+            # self.level -= 1
+            # self.indent()
+            # # self.append('}')
+            # self.integerFlag = False
+            # self.charFlag = False
+            # self.booleanFlag = False
 
-        if func == 'readln':
+
+        elif func == 'readln' or func == 'read':
             self.indent()
             self.append('scanf("')
 
-            if self.booleanFlag is True:
-                for i in args:
-                    self.append('%c')
-                self.append('", &c);')
-                return
 
-            if self.realFlag is True:
-                for i in args:
-                    self.append('%f')
-                self.append('",')
+            # if self.booleanFlag is True:
+            #     for i in args:
+            #         self.append('%c')
+            #     self.append('", &c);')
+            #     return
+            #
+            # if self.realFlag is True:
+            #     for i in args:
+            #         self.append('%f')
+            #     self.append('",')
+            #
+            # if self.charFlag is True:
+            #     for i in args:
+            #         self.append('%c')
+            #     self.append('",')
+            #
+            # if self.integerFlag is True:
+            #     for i in args:
+            #         self.append('%d')
+            #     self.append('",')
 
-            if self.charFlag is True:
-                for i in args:
-                    self.append('%c')
-                self.append('",')
 
-            if self.integerFlag is True:
-                for i in args:
-                    self.append('%d')
-                self.append('",')
-
+            neka = []
             for n in args:
-                self.visit(node, n)
-                if n == args[-1]:
-                    pass
+                if isinstance(n, Id):
+                    if n.value in self.mapa.keys():
+                        neka.append(n)
+                        promenljiva = self.mapa[n.value]
+                        if promenljiva == 'integer':
+                            self.append('%d')
+                        elif promenljiva == 'real':
+                            self.append('%f')
+                        elif promenljiva == 'char':
+                            self.append('%c')
+                        elif promenljiva == 'boolean':
+                            self.append('%d')
+                        elif  promenljiva == 'string':
+                            self.append('%s')
+                    else:
+                        self.visit(node,n)
+                elif isinstance(n, ArrayElem):
+                    if n.id_.value in self.mapa.keys():
+                        neka.append(n)
+                        promenljiva = self.mapa[n.id_.value]
+                        if promenljiva == 'integer':
+                            self.append('%d')
+                        elif promenljiva == 'real':
+                            self.append('%f')
+                        elif promenljiva == 'char':
+                            self.append('%c')
+                        elif promenljiva == 'boolean':
+                            self.append('%d')
+                        elif  promenljiva == 'string':
+                            self.append('%s')
+                    else:
+                        self.visit(node,n)
+            self.append('",')
+            for n in neka:
+                if isinstance(n, ArrayElem):
+                    self.append('&')
+                    self.visit(args, n)
+                    if n == neka[-1]:
+                        pass
+                    else:
+                        self.append(',')
                 else:
-                    self.append(',')
+                    self.append('&')
+                    self.append(n.value)
+                    if n == neka[-1]:
+                        pass
+                    else:
+                        self.append(',')
             self.append(');')
-        if func == 'ord':
-            for n in args:
-                self.visit(node, n)
+
+        elif func == 'ord':
+            self.append(args[0].value)
+            # for n in args:
+            #     self.visit(node, n)
+
+        elif func == 'chr':
+            self.append('(char)(')
+            self.visit(args, args[0])
+            self.append(')')
+
+        else:
+            funcPromenljiva = ''
+            if func in self.mapa.keys():
+                funcPromenljiva = self.mapa[func]
+            self.append(func)
+            self.append('(')
+            self.visit(node, node.args)
+            self.append(')')
+            if funcPromenljiva is None:
+                self.append(';')
+
+    def visit_ProcImpl(self, parent, node):
+        self.mapa[node.id_.value] = None
+        self.append('void ')
+        self.append(node.id_.value)
+        self.append('(')
+        self.visit(node, node.params)
+        self.append('){')
+        self.visit(node, node.var)
+        self.visit(node, node.block)
+        self.newline()
+        self.append('}')
+        self.newline()
 
     def visit_Block(self, parent, node):
         self.level += 1
@@ -1344,7 +1510,10 @@ class Generator(Visitor):
         for i, p in enumerate(node.params):
             if i > 0:
                 self.append(', ')
+            self.visit(p, p.type_)
             self.visit(p, p.id_)
+            self.mapa[p.id_.value] = p.type_.value
+
 
     def visit_Args(self, parent, node):
         for i, a in enumerate(node.args):
@@ -1359,16 +1528,18 @@ class Generator(Visitor):
             self.visit(node, e)
 
     def visit_Break(self, parent, node):
-        self.append('break')
+        self.append('break;')
 
     def visit_Continue(self, parent, node):
-        self.append('continue')
+        self.append('continue;')
 
     def visit_Exit(self, parent, node):
         self.append('return')
         if node.expr is not None:
             self.append(' ')
             self.visit(node, node.expr)
+        self.append(';')
+
 
     def visit_Type(self, parent, node):
         if node.value == 'integer':
@@ -1390,42 +1561,46 @@ class Generator(Visitor):
         self.append(node.value)
 
     def visit_Boolean(self, parent, node):
-        self.append(node.value)
+        if node.value == 'false':
+            self.append(' 0')
+        else:
+            self.append(' 1')
 
     def visit_Char(self, parent, node):
-        if self.real6 is True:
-            if node.value == '1' or node.value == '2' or node.value == '0':
-                self.append(node.value)
-                self.real6 = True
-                return
-            self.real6 = False
-        if node.value == ' ' or node.value == '*' or node.value == '\\n':
-            print(node.value)
-            self.append(node.value)
-            self.real6 = True
-            return
-        if parent.id_.value == 'write':
-            return
-        if parent.id_.value == 'ord':
-            self.append(ord(node.value))
-            # self.append(';')
-            return
-        self.append('"')
+        # if self.real6 is True:
+        #     if node.value == '1' or node.value == '2' or node.value == '0':
+        #         self.append(node.value)
+        #         self.real6 = True
+        #         return
+        #     self.real6 = False
+        # if node.value == ' ' or node.value == '*' or node.value == '\\n':
+        #     self.append(node.value)
+        #     self.real6 = True
+        #     return
+        # if parent.id_.value == 'write':
+        #     return
+        # if parent.id_.value == 'ord':
+        #     self.append(ord(node.value))
+        #     # self.append(';')
+        #     return
+
         self.append(node.value)
-        self.append('"')
+
 
     def visit_String(self, parent, node):
         self.append(node.value)
 
     def visit_Id(self, parent, node):
+        if node.value == 'i':
+            self.iflag = True
         if node.value == 'p2':
             self.real6 = True
         if type(parent) == BinOp:
             self.append(node.value)
             return
-        if parent.id_.value == 'readln':
-            self.append('&' + node.value)
-            return
+        # if parent.id_.value == 'readln':
+        #     self.append('&' + node.value)
+        #     return
         self.append(node.value)
 
     def visit_BinOp(self, parent, node):
@@ -1438,6 +1613,8 @@ class Generator(Visitor):
             self.append(' % ')
         elif node.symbol == 'div':
             self.append(' / ')
+        elif node.symbol == '=':
+            self.append(' == ')
         else:
             self.append(node.symbol)
         self.visit(node, node.second)
@@ -1456,7 +1633,7 @@ class Generator(Visitor):
             source.write(self.py)
         return path
 
-test_id = 8
+test_id = 15
 path = f'Druga faza/0{test_id}/src.pas'
 
 with open(path, 'r') as source:

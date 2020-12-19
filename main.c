@@ -1,30 +1,24 @@
-def jeProst(n);
-	if(n<=1) {
-return false
+void check_rm(int x, int cj, int cd, int cs){
+	int arm;
+	if(x<0) {
+return;
 	}
-		i = n / 2;
-	while( i>=2){
-		if(n % i=0) {
-return false
-		}
-		i = i-1;
+	arm = x == cj*cj*cj+cd*cd*cd+cs*cs*cs;
+	if(arm) {
+		printf("DA");
+	} else {
+		printf("NE");
 	}
-return true
+}
 int main() {
-		int n;
-		int i;
-		int s;
-		scanf("%d",&n);
-		i = 0;
-		s = 1;
-while false:
-			if() {
-				i = i+1;
-				if(i=n) {
-break
-				}
-			}
-			s = s+1;
-		printf("\n");
+	int broj;
+	int cj;
+	int cd;
+	int cs;
+	scanf("%d",&broj);
+	cj = broj % 10;
+	cd = broj / 10 % 10;
+	cs = broj / 100 % 10;
+check_rm(broj, cj, cd, cs);
 return 0;
 }
