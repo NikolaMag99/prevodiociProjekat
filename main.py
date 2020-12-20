@@ -125,8 +125,8 @@ class Lexer:
     def read_keyword(self):
         lexeme = self.text[self.pos]
         while self.pos + 1 < self.len and self.text[self.pos + 1].isalnum() or self.text[self.pos + 1] == '_':
-            if self.text[self.pos] == '_':
-                self.next_char()
+            # if self.text[self.pos] == '_':
+            #     self.next_char()
             lexeme += self.next_char()
         if lexeme == 'if':
             return Token(Class.IF, lexeme)
@@ -1055,6 +1055,7 @@ class Generator(Visitor):
         self.py = ""
         self.level = 0
         self.mapa = {}
+        self.daliFor = False
 
     integerFlag = False
     charFlag = False
@@ -1085,21 +1086,23 @@ class Generator(Visitor):
         self.newline()
         self.level -= 1
 
-
     def visit_Var(self, parent, node):
 
         if isinstance(parent, Program):
-             self.append('int main() {')
-             self.mainFunkcija = True
+            self.append('int main() {')
+            self.mainFunkcija = True
         self.visit(node, node.block)
-
 
     def visit_Decl(self, parent, node):
         self.indent()
         self.visit(node, node.type_)
         self.mapa[node.id_.value] = node.type_.value
         self.visit(node, node.id_)
-        self.append(';')
+        if node.type_.value == 'string':
+            self.append('[100] = {0}')
+        if not self.daliFor:
+            self.append(';')
+
 
     def visit_NoneType(self, parent, node):
         pass
@@ -1123,13 +1126,13 @@ class Generator(Visitor):
         self.append('-1')
         self.append(']')
 
-
     def visit_DvotackaJednako(self, parent, node):
         self.indent()
         self.visit(node, node.id_)
         self.append(' = ')
         self.visit(node, node.expr)
-        self.append(';')
+        if not self.daliFor:
+            self.append(';')
 
     def visit_If(self, parent, node):
         self.indent()
@@ -1149,10 +1152,12 @@ class Generator(Visitor):
 
     def visit_While(self, parent, node):
         self.append('while ')
+        self.append('(')
         self.visit(node, node.cond)
-        self.append(':')
+        self.append('){')
         self.newline()
         self.visit(node, node.block)
+        self.append('}')
 
     def visit_RepeatUntil(self, parent, node):
         self.append('do {')
@@ -1165,24 +1170,23 @@ class Generator(Visitor):
         self.newline()
 
     def visit_For(self, parent, node):
-        self.indent()
-        self.visit(node, node.init)
-        # self.append(';')
+        self.daliFor = True
         self.newline()
         self.indent()
-        self.append('while( ')
+        self.append('for(')
+        self.visit(node, node.init)
+        self.append(';')
         self.visit(node, node.cond)
+        self.append(';')
+        self.visit(node, node.step)
         self.append('){')
+        self.daliFor = False
+        self.indent()
+        self.newline()
         self.visit(node, node.block)
         self.newline()
         self.indent()
-        self.visit(node, node.step)
-        # self.append(';')
-        self.newline()
-        self.indent()
-        self.level += 1
         self.append('}')
-
 
     def visit_FuncImpl(self, parent, node):
         self.mapa[node.id_.value] = node.type_.value
@@ -1242,7 +1246,7 @@ class Generator(Visitor):
 
                 elif isinstance(n, ArrayElem) and n.id_.value in self.mapa.keys():
                     neka2.append(n)
-                    promenljiva = self.mapa[n.id_.value ]
+                    promenljiva = self.mapa[n.id_.value]
                     if promenljiva == 'integer':
                         self.append('%d')
                     elif promenljiva == 'real':
@@ -1267,6 +1271,8 @@ class Generator(Visitor):
                         self.append('%d')
                     elif promenljiva == 'string':
                         self.append('%s')
+                elif isinstance(n, Char):
+                    self.append(n.value)
                 else:
                     self.visit(node, n)
             self.append('"')
@@ -1285,112 +1291,9 @@ class Generator(Visitor):
                 self.indent()
                 self.append('printf("\\n");')
 
-            # if self.starFlag is True:
-            #     self.append('*");')
-            #     self.starFlag = False
-            #     return
-            #
-            # if self.booleanFlag is True:
-            #     for i in args:
-            #         self.visit(node, i)
-            #     self.integerFlag = False
-            #     self.charFlag = False
-            #
-            # if self.realFlag is True:
-            #     for i in args:
-            #         if type(i) == Char:
-            #             if self.real6 is True:
-            #                 self.visit(node, i)
-            #             else:
-            #                 continue
-            #         if i == args[-1]:
-            #             if self.real6:
-            #                 self.append('");')
-            #                 return
-            #             else:
-            #                 self.append('%.2f')
-            #                 continue
-            #         self.append('%.2f ')
-            #     self.append('",')
-            #
-            #     for n in args:
-            #         if type(n) == Char:
-            #             continue
-            #         self.visit(node, n)
-            #         if n == args[-1]:
-            #             pass
-            #         else:
-            #             self.append(',')
-            #
-            # if self.charFlag is True:
-            #     for i in args:
-            #         if i == args[-1]:
-            #             self.append('%c')
-            #             continue
-            #         self.append('%c ')
-            #     self.append('", c - 32')
-            #
-            # if self.integerFlag is True:
-            #     for i in args:
-            #         if type(i) == Char:
-            #             if i.value == ' ' and self.iflag is True:
-            #                 self.append(' ");')
-            #                 self.starFlag = True
-            #                 return
-            #             continue
-            #         if i == args[-1]:
-            #             self.append('%d')
-            #             continue
-            #         self.append('%d ')
-            #     self.append('",')
-            #
-            #     for n in args:
-            #         if type(n) == Char:
-            #             continue
-            #         self.visit(node, n)
-            #         if n == args[-1]:
-            #             pass
-            #         else:
-            #             self.append(',')
-            # self.append(');')
-            # self.newline()
-            # self.indent()
-            # # self.append('return 0;')
-            # self.newline()
-            # self.level -= 1
-            # self.indent()
-            # # self.append('}')
-            # self.integerFlag = False
-            # self.charFlag = False
-            # self.booleanFlag = False
-
-
         elif func == 'readln' or func == 'read':
             self.indent()
             self.append('scanf("')
-
-
-            # if self.booleanFlag is True:
-            #     for i in args:
-            #         self.append('%c')
-            #     self.append('", &c);')
-            #     return
-            #
-            # if self.realFlag is True:
-            #     for i in args:
-            #         self.append('%f')
-            #     self.append('",')
-            #
-            # if self.charFlag is True:
-            #     for i in args:
-            #         self.append('%c')
-            #     self.append('",')
-            #
-            # if self.integerFlag is True:
-            #     for i in args:
-            #         self.append('%d')
-            #     self.append('",')
-
 
             neka = []
             for n in args:
@@ -1406,10 +1309,10 @@ class Generator(Visitor):
                             self.append('%c')
                         elif promenljiva == 'boolean':
                             self.append('%d')
-                        elif  promenljiva == 'string':
+                        elif promenljiva == 'string':
                             self.append('%s')
                     else:
-                        self.visit(node,n)
+                        self.visit(node, n)
                 elif isinstance(n, ArrayElem):
                     if n.id_.value in self.mapa.keys():
                         neka.append(n)
@@ -1422,10 +1325,10 @@ class Generator(Visitor):
                             self.append('%c')
                         elif promenljiva == 'boolean':
                             self.append('%d')
-                        elif  promenljiva == 'string':
+                        elif promenljiva == 'string':
                             self.append('%s')
                     else:
-                        self.visit(node,n)
+                        self.visit(node, n)
             self.append('",')
             for n in neka:
                 if isinstance(n, ArrayElem):
@@ -1445,13 +1348,31 @@ class Generator(Visitor):
             self.append(');')
 
         elif func == 'ord':
-            self.append(args[0].value)
-            # for n in args:
-            #     self.visit(node, n)
+            self.visit(args, args[0])
 
         elif func == 'chr':
             self.append('(char)(')
             self.visit(args, args[0])
+            self.append(')')
+
+        elif func == 'insert':
+            self.append(args[1].value)
+            self.append('[')
+            self.append(args[2].value)
+            self.append('-1')
+            self.append(']')
+            self.append('=')
+            self.visit(args, args[0])
+            self.append(';')
+
+        elif func == 'inc':
+            self.append(args[0].value)
+            self.append('++')
+            self.append(';')
+
+        elif func == 'length':
+            self.append('strlen(')
+            self.append(args[0].value)
             self.append(')')
 
         else:
@@ -1514,7 +1435,6 @@ class Generator(Visitor):
             self.visit(p, p.id_)
             self.mapa[p.id_.value] = p.type_.value
 
-
     def visit_Args(self, parent, node):
         for i, a in enumerate(node.args):
             if i > 0:
@@ -1540,7 +1460,6 @@ class Generator(Visitor):
             self.visit(node, node.expr)
         self.append(';')
 
-
     def visit_Type(self, parent, node):
         if node.value == 'integer':
             self.integerFlag = True
@@ -1554,8 +1473,8 @@ class Generator(Visitor):
         if node.value == 'boolean':
             self.append('int ')
             self.booleanFlag = True
-
-
+        if node.value == 'string':
+            self.append('char ')
 
     def visit_Integer(self, parent, node):
         self.append(node.value)
@@ -1567,25 +1486,7 @@ class Generator(Visitor):
             self.append(' 1')
 
     def visit_Char(self, parent, node):
-        # if self.real6 is True:
-        #     if node.value == '1' or node.value == '2' or node.value == '0':
-        #         self.append(node.value)
-        #         self.real6 = True
-        #         return
-        #     self.real6 = False
-        # if node.value == ' ' or node.value == '*' or node.value == '\\n':
-        #     self.append(node.value)
-        #     self.real6 = True
-        #     return
-        # if parent.id_.value == 'write':
-        #     return
-        # if parent.id_.value == 'ord':
-        #     self.append(ord(node.value))
-        #     # self.append(';')
-        #     return
-
-        self.append(node.value)
-
+        self.append(ord(node.value))
 
     def visit_String(self, parent, node):
         self.append(node.value)
@@ -1598,9 +1499,6 @@ class Generator(Visitor):
         if type(parent) == BinOp:
             self.append(node.value)
             return
-        # if parent.id_.value == 'readln':
-        #     self.append('&' + node.value)
-        #     return
         self.append(node.value)
 
     def visit_BinOp(self, parent, node):
@@ -1611,6 +1509,8 @@ class Generator(Visitor):
             self.append(' || ')
         elif node.symbol == 'mod':
             self.append(' % ')
+        elif node.symbol == '<>':
+            self.append(' != ')
         elif node.symbol == 'div':
             self.append(' / ')
         elif node.symbol == '=':
@@ -1633,8 +1533,9 @@ class Generator(Visitor):
             source.write(self.py)
         return path
 
+
 test_id = 15
-path = f'Druga faza/0{test_id}/src.pas'
+path = f'Druga faza/{test_id}/src.pas'
 
 with open(path, 'r') as source:
     text = source.read()
