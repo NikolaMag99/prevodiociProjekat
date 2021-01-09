@@ -669,6 +669,7 @@ class Parser:
         self.eat(Class.SEMICOLON)
         return If(cond, true, false)
 
+
     def while_(self):
         self.eat(Class.WHILE)
         cond = self.logic()
@@ -1103,7 +1104,6 @@ class Generator(Visitor):
         if not self.daliFor:
             self.append(';')
 
-
     def visit_NoneType(self, parent, node):
         pass
 
@@ -1534,7 +1534,7 @@ class Generator(Visitor):
         return path
 
 
-test_id = 15
+test_id = 10
 path = f'Druga faza/{test_id}/src.pas'
 
 with open(path, 'r') as source:

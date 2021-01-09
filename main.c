@@ -1,42 +1,26 @@
-char  cifra_stotina(char s){
-	if(s<100) {
-return 48;
-	} else {
-return (char)(48+s / 100);
-	}
-}char  cifra_desetica(char s){
-	if(s<10) {
-return 48;
-	} else {
-return (char)(48+s / 10 % 10);
-	}
-}char  cifra_jedinica(char s){
-return (char)(48+s % 10);
-}int main() {
-	char s[100] = {0};
-	char t[100] = {0};
-	char ascii;
-	char tmp;
+int main() {
+int niz[100-1+1];
 	int i;
 	int j;
-	int len;
-	scanf("%s",&s);
-	i = 1;
-	j = 1;
-	len = strlen(s);
-while (i<=len){
-		ascii = s[i-1];
-i++;
-		tmp = cifra_stotina(ascii);
-		if(tmp != 48 || tmp == 48 && j>1) {
-t[j-1]=tmp;
-j++;
+	int n;
+	int temp;
+	scanf("%d",&n);
+	for(	i = 1;i<=n;	i = i+1){	
+		scanf("%d",&niz[i-1]);
+	}
+	for(	i = 1;i<=n;	i = i+1){	
+		for(		j = i+1;j<=n;		j = j+1){		
+			if(niz[i-1]<=niz[j-1]) {
+continue;
+			} else {
+				temp = niz[i-1];
+				niz[i-1] = niz[j-1];
+				niz[j-1] = temp;
+			}
 		}
-t[j-1]=cifra_desetica(ascii);
-j++;
-t[j-1]=cifra_jedinica(ascii);
-j++;
-}
-	printf("%s",t);
+	}
+	for(	i = 1;i<=n;	i = i+1){	
+		printf("%d ",niz[i-1]);
+	}
 return 0;
 }
