@@ -1,1 +1,1 @@
-Prevodjenje paskal koda u c. 
+Prevodjenje Paskal koda u C. 
